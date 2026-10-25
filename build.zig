@@ -10,12 +10,12 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
-            // .strip = true,
+            .strip = true,
         }),
     });
 
     b.installArtifact(exe);
-    const run_step = b.step("run", "Run the app");
+    const run_step = b.step("run", "Run the barz in your terminal");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
