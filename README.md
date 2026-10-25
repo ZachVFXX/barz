@@ -23,7 +23,7 @@ bar {
 }
 ```
 
-Then run `swaymsg reload` or `cmd+shift+c` on sway.
+Then run `swaymsg reload` or `mod+shift+c` on sway.
 
 ## Example
 
