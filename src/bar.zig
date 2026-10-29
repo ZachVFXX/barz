@@ -10,7 +10,6 @@ update_rate: Io.Duration = .fromSeconds(1),
 output_buffer: [512]u8 = undefined,
 len: usize = 0,
 
-printed: bool = false, // a line has been written before
 is_tty: bool, // only emit escape codes on a terminal
 
 pub fn init(io: Io) Bar {
@@ -36,14 +35,12 @@ pub fn end(self: *Bar) void {
     const out = Io.File.stdout();
 
     // Clear the previous line if one
-    if (self.is_tty and self.printed) {
-        out.writeStreamingAll(self.io, "\x1b[A\x1b[2K\r") catch unreachable;
+    if (self.is_tty) {
+        out.writeStreamingAll(self.io, "\x1b[2J\x1b[H") catch unreachable;
     }
 
     self.output_buffer[self.len] = '\n';
     out.writeStreamingAll(self.io, self.output_buffer[0 .. self.len + 1]) catch unreachable;
-    self.printed = true;
-
     self.io.sleep(self.update_rate, .real) catch unreachable;
     self.tick += 1;
 }

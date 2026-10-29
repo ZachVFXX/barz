@@ -5,8 +5,7 @@ const Battery = @import("modules/battery.zig");
 const Cpu = @import("modules/cpu.zig");
 const Ram = @import("modules/ram.zig");
 const Brightness = @import("modules/brightness.zig");
-const Volume = @import("modules/volume.zig");
-const Micro = @import("modules/micro.zig");
+const Pipewire = @import("modules/pipewire.zig");
 
 const builtin = @import("builtin");
 const units = @import("units.zig");
@@ -26,10 +25,14 @@ const cpu64bit: []const u8 = "\u{f0ee0}";
 const cpu_icon: []const u8 = if (builtin.target.ptrBitWidth() == 64) cpu64bit else cpu32bit;
 
 const icon_brightness = "\u{f00e0}";
+
 const icon_vol = "\u{f057e}";
 const icon_vol_muted = "\u{f0581}";
+
 const icon_mic = "\u{f036c}";
 const icon_mic_muted = "\u{f036d}";
+const in_use_dot = " \u{ea71}";
+const not_use_dot = " \u{eabc}";
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -46,45 +49,45 @@ pub fn main(init: std.process.Init) !void {
     var clock = try Clock.init(io, init.gpa);
     defer clock.deinit(io);
 
+    var audio = try Pipewire.init(io, init.gpa);
+    defer audio.deinit(io);
+
     var brightness = try Brightness.init(io, init.gpa, "amdgpu_bl0");
     defer brightness.deinit(io);
-
-    var volume = try Volume.init(io, init.gpa);
-    defer volume.deinit(io);
-
-    var micro = try Micro.init(io, init.gpa);
-    defer micro.deinit(io);
 
     var bar = Bar.init(io);
 
     while (true) {
         bar.begin();
+        // TODO: Use custom duration for module using IoDUration
         defer bar.end();
-
-        if (battery.poll(io, bar.tick)) |b| {
-            const idx = @min(b.percent / 10, battery_icons.len - 1);
-            const icon = if (b.status == .charging) battery_charging_icons[idx] else battery_icons[idx];
-            bar.item("{d}% {s}", .{ b.percent, icon });
-        }
-
-        if (volume.poll(io, bar.tick)) |v| {
-            bar.item("{s} {d}%", .{ if (v.muted) icon_vol_muted else icon_vol, v.percent });
-        }
-
-        if (micro.poll(io, bar.tick)) |m| {
-            bar.item("{s}", .{if (m.muted) icon_mic_muted else icon_mic});
-        }
-
-        if (ram.poll(io, bar.tick)) |r| {
-            bar.item("RAM {d:.1} Gib", .{r.used.to(.gib)});
-        }
 
         if (cpu.poll(io, bar.tick)) |c| {
             bar.item("CPU {d:.0}%", .{c.percent});
         }
 
+        if (ram.poll(io, bar.tick)) |r| {
+            bar.item("RAM {d:.1} Gib", .{r.used.to(.gib)});
+        }
+        if (audio.poll(io, bar.tick)) |d| {
+            if (d.speaker.present) {
+                const dot: []const u8 = if (d.speaker.in_use) in_use_dot else not_use_dot;
+                bar.item("{s} {d}%{s}", .{ if (d.speaker.muted) icon_vol_muted else icon_vol, d.speaker.percent, dot });
+            }
+            if (d.micro.present) {
+                const dot: []const u8 = if (d.micro.in_use) in_use_dot else not_use_dot;
+                bar.item("{s} {d}%{s}", .{ if (d.micro.muted) icon_mic_muted else icon_mic, d.micro.percent, dot });
+            }
+        }
+
         if (brightness.poll(io, bar.tick)) |b| {
-            bar.item("Brightness {d:.0}%", .{b.percent});
+            bar.item("{d:.0}% {s}", .{ b.percent, icon_brightness });
+        }
+
+        if (battery.poll(io, bar.tick)) |b| {
+            const idx = @min(b.percent / 10, battery_icons.len - 1);
+            const icon = if (b.status == .charging) battery_charging_icons[idx] else battery_icons[idx];
+            bar.item("{d}% {s}", .{ b.percent, icon });
         }
 
         if (clock.poll(io, bar.tick)) |t| {

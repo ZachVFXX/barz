@@ -14,9 +14,18 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    const pipewire = b.dependency("pipewire", .{
+        .optimize = optimize,
+        .target = target,
+    });
+
+    exe.root_module.addImport("pipewire", pipewire.module("pipewire"));
+
     b.installArtifact(exe);
-    const run_step = b.step("run", "Run the barz in your terminal");
+    
+    const run_step = b.step("run", "Run the bar in your terminal");
     const run_cmd = b.addRunArtifact(exe);
+
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
     run_cmd.addPassthruArgs();

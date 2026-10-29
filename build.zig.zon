@@ -1,6 +1,12 @@
 .{
     .name = .barz,
     .version = "0.1.0",
+    .dependencies = .{
+        .pipewire = .{
+            .url = "git+https://github.com/allyourcodebase/pipewire#09b42b552c3854f86a9fdea4a3c44cfa7ccb367d",
+            .hash = "pipewire-3.0.0+1.6.3-tKslQ26PAQDW8AqpxYYgZTVUasfJYbpdGBk3cS74S07e",
+        },
+    },
     .fingerprint = 0x54a7c2d556b268c1, // Changing this has security and trust implications.
     .minimum_zig_version = "0.17.0",
     .paths = .{
