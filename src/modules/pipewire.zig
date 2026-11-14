@@ -3,9 +3,8 @@ const builtin = @import("builtin");
 const pw = @import("pipewire").c;
 
 const Self = @This();
-const endian = builtin.cpu.arch.endian();
 
-pub const interval = 1;
+const endian = builtin.cpu.arch.endian();
 
 pub const Level = struct {
     present: bool = false, // false until the device reported its volume
@@ -432,8 +431,9 @@ fn devParam(
 gpa: std.mem.Allocator,
 st: *State,
 cached_data: ?Data = null,
+interval: std.Io.Duration,
 
-pub fn init(_: std.Io, gpa: std.mem.Allocator) !Self {
+pub fn init(_: std.Io, gpa: std.mem.Allocator, interval: std.Io.Duration) !Self {
     pw.pw_init(null, null);
 
     const st = try gpa.create(State);
@@ -454,7 +454,7 @@ pub fn init(_: std.Io, gpa: std.mem.Allocator) !Self {
     _ = v.m.add_listener.?(v.d, &st.reg_hook, &registry_events, st);
 
     if (pw.pw_thread_loop_start(st.tloop) < 0) return error.PipeWire;
-    return .{ .gpa = gpa, .st = st };
+    return .{ .gpa = gpa, .st = st, .interval = interval };
 }
 
 pub fn deinit(self: *Self, _: std.Io) void {
@@ -466,14 +466,13 @@ pub fn deinit(self: *Self, _: std.Io) void {
     self.gpa.destroy(self.st);
 }
 
-/// PipeWire pushes changes this only copies the latest state
-pub fn poll(self: *Self, _: std.Io, _: u64) ?Data {
+/// PipeWire pushes changes on its own thread, this only snapshots the latest state.
+pub fn read(self: *Self, _: std.Io) !Data {
     pw.pw_thread_loop_lock(self.st.tloop);
     defer pw.pw_thread_loop_unlock(self.st.tloop);
     const st = self.st;
-    self.cached_data = .{
+    return .{
         .speaker = st.level(.sink, st.anyRunning(.playing)),
         .micro = st.level(.source, st.anyRunning(.recording)),
     };
-    return self.cached_data;
 }

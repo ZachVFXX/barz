@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("pipewire", pipewire.module("pipewire"));
 
     b.installArtifact(exe);
-    
+
     const run_step = b.step("run", "Run the bar in your terminal");
     const run_cmd = b.addRunArtifact(exe);
 

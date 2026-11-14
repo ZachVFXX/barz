@@ -1,18 +1,16 @@
 const std = @import("std");
 const utils = @import("../utils.zig");
-
 const Self = @This();
 
-pub const interval = 1;
 pub const Data = struct { percent: u8 };
 
+interval: std.Io.Duration,
 file: std.Io.File,
 max: u32,
 buf: [16]u8 = undefined,
-cached_data: ?Data = null,
 
 /// Find the name of your backlight in /sys/class/backlight/... ex: intel_backlight, amdgpu_bl0, amdgpu_bl1, nvidia_0, acpi_video0..
-pub fn init(io: std.Io, _: std.mem.Allocator, name: []const u8) !Self {
+pub fn init(io: std.Io, _: std.mem.Allocator, name: []const u8, interval: std.Io.Duration) !Self {
     var p1: [96]u8 = undefined;
     var p2: [96]u8 = undefined;
 
@@ -32,21 +30,14 @@ pub fn init(io: std.Io, _: std.mem.Allocator, name: []const u8) !Self {
         file.close(io);
         return error.InvalidBacklight;
     }
-    return .{ .file = file, .max = max };
+    return .{ .file = file, .max = max, .interval = interval };
 }
 
 pub fn deinit(self: *Self, io: std.Io) void {
     self.file.close(io);
 }
 
-fn read(self: *Self, io: std.Io) !Data {
+pub fn read(self: *Self, io: std.Io) !Data {
     const cur = try std.fmt.parseInt(u32, utils.trimmed(try utils.readAt0(io, self.file, &self.buf)), 10);
     return .{ .percent = @intCast(@min(100, @as(u64, cur) * 100 / self.max)) };
-}
-
-pub fn poll(self: *Self, io: std.Io, tick: u64) ?Data {
-    if (self.cached_data == null or tick % interval == 0) {
-        self.cached_data = self.read(io) catch null;
-    }
-    return self.cached_data;
 }

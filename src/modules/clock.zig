@@ -3,7 +3,6 @@ const utils = @import("../utils.zig");
 
 const Self = @This();
 
-pub const interval = 1;
 pub const Data = struct {
     year: u16,
     month: u8, // 1-12
@@ -13,23 +12,22 @@ pub const Data = struct {
     second: u8,
     utc_offset: i32, // seconds
 };
-
+interval: std.Io.Duration,
 tz: std.tz.Tz,
-cached_data: ?Data = null,
 
-pub fn init(io: std.Io, gpa: std.mem.Allocator) !Self {
+pub fn init(io: std.Io, gpa: std.mem.Allocator, interval: std.Io.Duration) !Self {
     const f = try utils.openRo(io, "/etc/localtime");
     defer f.close(io);
     var buf: [16 * 1024]u8 = undefined;
     var r = std.Io.Reader.fixed(try utils.readAt0(io, f, &buf));
-    return .{ .tz = try std.tz.Tz.parse(gpa, &r) };
+    return .{ .tz = try std.tz.Tz.parse(gpa, &r), .interval = interval };
 }
 
 pub fn deinit(self: *Self, _: std.Io) void {
     self.tz.deinit();
 }
 
-fn read(self: *Self, io: std.Io) !Data {
+pub fn read(self: *Self, io: std.Io) !Data {
     const utc: i64 = @intCast(@divFloor(std.Io.Clock.real.now(io).nanoseconds, std.time.ns_per_s));
 
     var off: i32 = if (self.tz.timetypes.len > 0) self.tz.timetypes[0].offset else 0;
@@ -51,12 +49,4 @@ fn read(self: *Self, io: std.Io) !Data {
         .second = ds.getSecondsIntoMinute(),
         .utc_offset = off,
     };
-}
-
-/// Re-reads when due (or if there is no data yet), then returns the cached data.
-pub fn poll(self: *Self, io: std.Io, tick: u64) ?Data {
-    if (self.cached_data == null or tick % interval == 0) {
-        self.cached_data = self.read(io) catch null;
-    }
-    return self.cached_data;
 }

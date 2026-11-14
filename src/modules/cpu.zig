@@ -3,27 +3,24 @@ const utils = @import("../utils.zig");
 const builtin = @import("builtin");
 const Self = @This();
 
-pub const interval = 1;
 pub const Data = struct {
     percent: f32,
 };
-
+interval: std.Io.Duration,
 file: std.Io.File,
 buf: [256]u8 = undefined,
 prev_idle: u64 = 0,
 prev_total: u64 = 0,
 
-cached_data: ?Data = null,
-
-pub fn init(io: std.Io, _: std.mem.Allocator) !Self {
-    return .{ .file = try utils.openRo(io, "/proc/stat") };
+pub fn init(io: std.Io, _: std.mem.Allocator, interval: std.Io.Duration) !Self {
+    return .{ .file = try utils.openRo(io, "/proc/stat"), .interval = interval };
 }
 
 pub fn deinit(self: *Self, io: std.Io) void {
     self.file.close(io);
 }
 
-fn read(self: *Self, io: std.Io) !Data {
+pub fn read(self: *Self, io: std.Io) !Data {
     const s = try utils.readAt0(io, self.file, &self.buf);
     var it = std.mem.tokenizeScalar(u8, s[0 .. std.mem.indexOfScalar(u8, s, '\n') orelse s.len], ' ');
     _ = it.next();
@@ -43,12 +40,4 @@ fn read(self: *Self, io: std.Io) !Data {
     self.prev_total = total;
     self.prev_idle = idle;
     return .{ .percent = pct };
-}
-
-/// Re-reads when due (or if there is no data yet), then returns the cached data.
-pub fn poll(self: *Self, io: std.Io, tick: u64) ?Data {
-    if (self.cached_data == null or tick % interval == 0) {
-        self.cached_data = self.read(io) catch null;
-    }
-    return self.cached_data;
 }
