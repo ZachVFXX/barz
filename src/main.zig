@@ -10,6 +10,12 @@ const Pipewire = @import("modules/pipewire.zig");
 const builtin = @import("builtin");
 const units = @import("units.zig");
 
+pub const std_options: std.Options = .{
+    .log_scope_levels = &.{
+        .{ .scope = .wrap_dlfcn, .level = if (builtin.optimize != .debug) .err else .info },
+    },
+};
+
 const battery_icons = [_][]const u8{
     "\u{f008e}", "\u{f007a}", "\u{f007b}", "\u{f007c}", "\u{f007d}", "\u{f007e}",
     "\u{f007f}", "\u{f0080}", "\u{f0081}", "\u{f0082}", "\u{f0079}",
