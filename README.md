@@ -27,20 +27,21 @@ Then run `swaymsg reload` or `mod+shift+c` on sway.
 
 ## Example
 
-The whole bar is described in `src/main.zig`. Every second, `main` asks each module for its data and decides how to display it:
+The whole bar is described in `src/main.zig`. `main` asks each module for its data and update it if needed and decides how to display it:
 
 
 | Call | What it does |
 |------|--------------|
 | `bar.begin()` | Start a new frame |
 | `bar.item(fmt, args)` | Append an item and add separator |
-| `bar.end()` | Print the line, sleep, advance `bar.tick` |
+| `bar.get(&module)`  | get module data and update if needed |
+| `bar.end()` | Print the line and wait for the next deadline |
 
 
 | Module | Data |
 |--------|------|
 | `battery` | `percent`, `status` |
-| `ram` | `total`, `available`, `used` |
+| `ram` | `total`, `available`, `used`, `percent` |
 | `cpu` | `percent` |
 | `clock` | `year`, `month`, `day`, `hour`, `minute`, `second` |
 | `brightness` | `percent` |
@@ -50,18 +51,21 @@ The whole bar is described in `src/main.zig`. Every second, `main` asks each mod
 A module is a struct with:
 
 ```zig
-pub const interval = 1;                                // seconds between read
-pub const Data = struct { ... };                       // what the module returns
-pub fn init(io: std.Io, gpa: std.mem.Allocator) !Self
+interval = std.Io.Duration;                                // seconds between read
+pub const Data = struct { ... };                           // what the module returns
+pub fn init(io: std.Io, gpa: std.mem.Allocator, interval: std.Io.Duration) !Self
 pub fn deinit(self: *Self, io: std.Io) void
-fn read(self: *Self, io: std.Io) !Data                 // does the actual reading
-pub fn poll(self: *Self, io: std.Io, tick: u64) ?Data  // reads when due, returns cached data
+pub fn read(self: *Self, io: std.Io) !Data                 // does the actual reading
 ```
 
 ```zig
 const units = @import("units.zig");
 units.from(16_000_000, .kib).to(.gib);
 units.from(16, .).to(.gb);
+
+// Exemple in main.zig
+result = r.used.humanize(.iec);
+bar.item("RAM {d:.1} {s} ({d:.1}%)", .{ result.value, result.unit.name(), r.percent });
 ```
 
 ## License

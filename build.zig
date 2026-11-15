@@ -4,22 +4,24 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
-        .name = "barz",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .strip = true,
-        }),
-    });
-
     const pipewire = b.dependency("pipewire", .{
         .optimize = optimize,
         .target = target,
     });
 
-    exe.root_module.addImport("pipewire", pipewire.module("pipewire"));
+    const exe = b.addExecutable(.{
+        .name = "barz",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .strip = true,
+            .imports = &.{
+                .{ .name = "pipewire", .module = pipewire.module("pipewire") },
+            },
+        }),
+    });
 
     b.installArtifact(exe);
 
