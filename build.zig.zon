@@ -1,6 +1,6 @@
 .{
     .name = .barz,
-    .version = "0.2.0",
+    .version = "0.3.0",
     .dependencies = .{
         .pipewire = .{
             .url = "git+https://github.com/allyourcodebase/pipewire#09b42b552c3854f86a9fdea4a3c44cfa7ccb367d",

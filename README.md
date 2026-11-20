@@ -1,6 +1,6 @@
 # barz
 
-A tiny, fast status bar program for [swaybar](https://github.com/swaywm/sway) (and anything that reads status lines from stdout), written in Zig. A replacement for `i3status`.
+A tiny and fast status bar program for [swaybar](https://github.com/swaywm/sway) (and anything that reads status lines from stdout), written in Zig. A replacement for `i3status`.
 
 ## Build
 
@@ -34,7 +34,8 @@ The whole bar is described in `src/main.zig`. `main` asks each module for its da
 |------|--------------|
 | `bar.begin()` | Start a new frame |
 | `bar.item(fmt, args)` | Append an item and add separator |
-| `bar.get(&module)`  | get module data and update if needed |
+| `bar.get(&module)`  | Get module data and update if needed |
+| `bar.event("module_name")`| Return an event if occured |
 | `bar.end()` | Print the line and wait for the next deadline |
 
 
@@ -61,7 +62,6 @@ pub fn read(self: *Self, io: std.Io) !Data                 // does the actual re
 ```zig
 const units = @import("units.zig");
 units.from(16_000_000, .kib).to(.gib);
-units.from(16, .).to(.gb);
 
 // Exemple in main.zig
 result = r.used.humanize(.iec);

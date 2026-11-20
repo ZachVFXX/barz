@@ -65,37 +65,74 @@ pub fn main(init: std.process.Init) !void {
 
     var buffer: [512]u8 = undefined;
     var bar = Bar.init(io, &buffer);
+    var toggle_ram = false;
 
     while (true) {
         bar.begin();
         defer bar.end();
 
-        if (bar.get(&cpu)) |c| bar.item("CPU {d:.0}%", .{c.percent});
+        if (bar.get(&cpu)) |c| bar.item("cpu", .{}, "CPU {d:.0}%", .{c.percent});
+
+        while (bar.event("speaker")) |b| {
+            switch (b) {
+                .left => audio.toggleMute(.speaker),
+                .scroll_up => audio.adjustVolume(.speaker, 5),
+                .scroll_down => audio.adjustVolume(.speaker, -5),
+                else => continue,
+            }
+        }
+
+        while (bar.event("micro")) |b| {
+            switch (b) {
+                .left => audio.toggleMute(.micro),
+                .scroll_up => audio.adjustVolume(.micro, 5),
+                .scroll_down => audio.adjustVolume(.micro, -5),
+                else => continue,
+            }
+        }
+
+        while (bar.event("ram")) |button| switch (button) {
+            .left => toggle_ram = !toggle_ram,
+            else => {},
+        };
+
+        while (bar.event("brightness")) |b| {
+            switch (b) {
+                .left => audio.toggleMute(.micro),
+                .scroll_up => audio.adjustVolume(.micro, 5),
+                .scroll_down => audio.adjustVolume(.micro, -5),
+                else => continue,
+            }
+        }
 
         if (bar.get(&ram)) |r| {
             const result = r.used.humanize(.iec);
-            bar.item("RAM {d:.1} {s} ({d:.1}%)", .{ result.value, result.unit.name(), r.percent });
+            if (toggle_ram) {
+                bar.item("ram", .{}, "RAM {d:.1} {s} ({d:.1}%)", .{ result.value, result.unit.name(), r.percent });
+            } else {
+                bar.item("ram", .{}, "RAM {d:.1} {s}", .{ result.value, result.unit.name() });
+            }
         }
 
         if (bar.get(&audio)) |d| {
             if (d.speaker.present) {
                 const dot: []const u8 = if (d.speaker.in_use) in_use_dot else not_use_dot;
-                bar.item("{s} {d}%{s}", .{ if (d.speaker.muted) icon_vol_muted else icon_vol, d.speaker.percent, dot });
+                bar.item("speaker", .{}, "{s} {d}%{s}", .{ if (d.speaker.muted) icon_vol_muted else icon_vol, d.speaker.percent, dot });
             }
             if (d.micro.present) {
                 const dot: []const u8 = if (d.micro.in_use) in_use_dot else not_use_dot;
-                bar.item("{s} {d}%{s}", .{ if (d.micro.muted) icon_mic_muted else icon_mic, d.micro.percent, dot });
+                bar.item("micro", .{}, "{s} {d}%{s}", .{ if (d.micro.muted) icon_mic_muted else icon_mic, d.micro.percent, dot });
             }
         }
-        if (bar.get(&brightness)) |b| bar.item("{d:.0}% {s}", .{ b.percent, icon_brightness });
+        if (bar.get(&brightness)) |b| bar.item("brightness", .{}, "{d:.0}% {s}", .{ b.percent, icon_brightness });
 
         if (bar.get(&battery)) |b| {
             const idx = @min(b.percent / 10, battery_icons.len - 1);
             const icon = if (b.status == .charging) battery_charging_icons[idx] else battery_icons[idx];
-            bar.item("{d}% {s}", .{ b.percent, icon });
+            bar.item("battery", .{}, "{d}% {s}", .{ b.percent, icon });
         }
         if (bar.get(&clock)) |t| {
-            bar.item("{d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}", .{ t.year, t.month, t.day, t.hour, t.minute, t.second });
+            bar.item("clock", .{}, "{d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}", .{ t.year, t.month, t.day, t.hour, t.minute, t.second });
         }
     }
 }
