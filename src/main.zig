@@ -29,6 +29,23 @@ const battery_charging_icons = [_][]const u8{
 const cpu32bit: []const u8 = "\u{f0edf}";
 const cpu64bit: []const u8 = "\u{f0ee0}";
 
+const clock_icons = [_][]const u8{
+    "\u{f144a}",
+    "\u{f143f}",
+    "\u{f1440}",
+    "\u{f1441}",
+    "\u{f1442}",
+    "\u{f1443}",
+    "\u{f1444}",
+    "\u{f1445}",
+    "\u{f1446}",
+    "\u{f1447}",
+    "\u{f1448}",
+    "\u{f1449}",
+};
+
+const calendar_icon: []const u8 = "\u{ef37}";
+
 const cpu_icon: []const u8 = if (builtin.target.ptrBitWidth() == 64) cpu64bit else cpu32bit;
 
 const icon_brightness = "\u{f00e0}";
@@ -54,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
     var battery = try Battery.init(io, gpa, .fromSeconds(30));
     defer battery.deinit(io);
 
-    var brightness = try Brightness.init(io, gpa, "amdgpu_bl0", .fromSeconds(1));
+    var brightness = try Brightness.init(io, gpa, "amdgpu_bl0", .fromMilliseconds(25));
     defer brightness.deinit(io);
 
     var audio = try Pipewire.init(io, gpa, .fromMilliseconds(25));
@@ -63,15 +80,15 @@ pub fn main(init: std.process.Init) !void {
     var clock = try Clock.init(io, init.gpa, .fromSeconds(1));
     defer clock.deinit(io);
 
-    var buffer: [512]u8 = undefined;
-    var bar = Bar.init(io, &buffer);
-    var toggle_ram = false;
+    var output_buffer: [512]u8 = undefined;
+    var event_buffer: [512]u8 = undefined;
+    var bar = Bar.init(io, &output_buffer, &event_buffer);
 
     while (true) {
         bar.begin();
         defer bar.end();
 
-        if (bar.get(&cpu)) |c| bar.item("cpu", .{}, "CPU {d:.0}%", .{c.percent});
+        if (bar.get(&cpu)) |c| bar.item(.{ .id = "cpu", .text_color = if (c.percent < 90) null else "#ff4114" }, " CPU {d:.0}%", .{c.percent});
 
         while (bar.event("speaker")) |b| {
             switch (b) {
@@ -91,48 +108,45 @@ pub fn main(init: std.process.Init) !void {
             }
         }
 
-        while (bar.event("ram")) |button| switch (button) {
-            .left => toggle_ram = !toggle_ram,
-            else => {},
-        };
-
         while (bar.event("brightness")) |b| {
             switch (b) {
-                .left => audio.toggleMute(.micro),
-                .scroll_up => audio.adjustVolume(.micro, 5),
-                .scroll_down => audio.adjustVolume(.micro, -5),
+                .scroll_up => {
+                    try brightness.adjust(init.io, 5);
+                    bar.refresh(&brightness);
+                },
+                .scroll_down => {
+                    try brightness.adjust(init.io, -5);
+                    bar.refresh(&brightness);
+                },
                 else => continue,
             }
         }
 
         if (bar.get(&ram)) |r| {
             const result = r.used.humanize(.iec);
-            if (toggle_ram) {
-                bar.item("ram", .{}, "RAM {d:.1} {s} ({d:.1}%)", .{ result.value, result.unit.name(), r.percent });
-            } else {
-                bar.item("ram", .{}, "RAM {d:.1} {s}", .{ result.value, result.unit.name() });
-            }
+            bar.item(.{ .id = "ram", .text_color = if (r.percent < 90) null else "#ff4114" }, " RAM {d:.1} {s}", .{ result.value, result.unit.name() });
         }
 
         if (bar.get(&audio)) |d| {
             if (d.speaker.present) {
                 const dot: []const u8 = if (d.speaker.in_use) in_use_dot else not_use_dot;
-                bar.item("speaker", .{}, "{s} {d}%{s}", .{ if (d.speaker.muted) icon_vol_muted else icon_vol, d.speaker.percent, dot });
+                bar.item(.{ .id = "speaker" }, " {s} {d}%{s}", .{ if (d.speaker.muted) icon_vol_muted else icon_vol, d.speaker.percent, dot });
             }
             if (d.micro.present) {
                 const dot: []const u8 = if (d.micro.in_use) in_use_dot else not_use_dot;
-                bar.item("micro", .{}, "{s} {d}%{s}", .{ if (d.micro.muted) icon_mic_muted else icon_mic, d.micro.percent, dot });
+                bar.item(.{ .id = "micro" }, " {s} {d}%{s}", .{ if (d.micro.muted) icon_mic_muted else icon_mic, d.micro.percent, dot });
             }
         }
-        if (bar.get(&brightness)) |b| bar.item("brightness", .{}, "{d:.0}% {s}", .{ b.percent, icon_brightness });
+        if (bar.get(&brightness)) |b| bar.item(.{ .id = "brightness" }, " {d:.0}% {s}", .{ b.percent, icon_brightness });
 
         if (bar.get(&battery)) |b| {
             const idx = @min(b.percent / 10, battery_icons.len - 1);
             const icon = if (b.status == .charging) battery_charging_icons[idx] else battery_icons[idx];
-            bar.item("battery", .{}, "{d}% {s}", .{ b.percent, icon });
+            bar.item(.{ .id = "battery" }, " {d}% {s}", .{ b.percent, icon });
         }
         if (bar.get(&clock)) |t| {
-            bar.item("clock", .{}, "{d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}:{d:0>2}", .{ t.year, t.month, t.day, t.hour, t.minute, t.second });
+            bar.item(.{ .id = "clock" }, " {s} {d:0>2}:{d:0>2}:{d:0>2}", .{ clock_icons[t.hour % 12], t.hour, t.minute, t.second });
+            bar.item(.{ .id = "date" }, " {s} {d}-{d:0>2}-{d:0>2}", .{ calendar_icon, t.year, t.month, t.day });
         }
     }
 }

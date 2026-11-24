@@ -1,49 +1,33 @@
 const std = @import("std");
 const Io = std.Io;
 const linux = std.os.linux;
+const i3bar = @import("i3bar.zig");
 const Bar = @This();
 
 const max_scheduling_state = 16;
 const data_cap = 128;
-const max_events = 8;
-const max_name = 32;
 
-pub const Button = enum(u8) {
-    left = 1,
-    middle = 2,
-    right = 3,
-    scroll_up = 4,
-    scroll_down = 5,
-    _,
+pub const Border = struct {
+    color: ?[]const u8 = null,
+    top: ?i32 = null,
+    right: ?i32 = null,
+    bottom: ?i32 = null,
+    left: ?i32 = null,
+};
+
+pub const Align = enum {
+    center,
+    right,
+    left,
 };
 
 pub const Style = struct {
-    color: ?[]const u8 = null,
-    background: ?[]const u8 = null,
+    id: ?[]const u8 = null,
+    text_color: ?[]const u8 = null,
+    background_color: ?[]const u8 = null,
     urgent: bool = false,
-};
-
-const Block = struct {
-    name: []const u8,
-    full_text: []const u8,
-    color: ?[]const u8 = null,
-    background: ?[]const u8 = null,
-    urgent: ?bool = null,
-};
-
-const RawEvent = struct {
-    name: []const u8 = "",
-    button: u8 = 0,
-};
-
-const Event = struct {
-    name_buf: [max_name]u8 = undefined,
-    name_len: u8 = 0,
-    button: Button = .left,
-
-    fn name(self: *const Event) []const u8 {
-        return self.name_buf[0..self.name_len];
-    }
+    border: ?Border = null,
+    @"align": ?Align = null,
 };
 
 const SchedulingState = struct {
@@ -67,15 +51,14 @@ now: i96 = 0,
 wake: i96 = std.math.maxInt(i96),
 dirty: bool = true,
 
-events: [max_events]Event = undefined,
-n_events: usize = 0,
+events: i3bar.Events,
 in_buf: [512]u8 = undefined,
 in_len: usize = 0,
 stdin_open: bool = true,
 
-pub fn init(io: Io, output_buffer: []u8) Bar {
+pub fn init(io: Io, output_buffer: []u8, event_buffer: []u8) Bar {
     std.debug.assert(output_buffer.len > 16);
-    return .{ .io = io, .output_buffer = output_buffer };
+    return .{ .io = io, .output_buffer = output_buffer, .events = .init(event_buffer) };
 }
 
 pub fn begin(self: *Bar) void {
@@ -116,34 +99,33 @@ pub fn get(self: *Bar, module: anytype) ?@TypeOf(module.*).Data {
     return cached.*;
 }
 
-pub fn item(self: *Bar, name: []const u8, style: Style, comptime fmt: []const u8, args: anytype) void {
+pub fn item(self: *Bar, style: Style, comptime fmt: []const u8, args: anytype) void {
     var tmp: [256]u8 = undefined;
     var tw = Io.Writer.fixed(&tmp);
     tw.print(fmt, args) catch return;
 
     var w = Io.Writer.fixed(self.output_buffer[self.len .. self.output_buffer.len - 3]);
     if (self.blocks > 0) w.writeAll(",") catch return;
-    std.json.Stringify.value(Block{
-        .name = name,
+    std.json.Stringify.value(i3bar.Block{
+        .name = style.id,
         .full_text = tw.buffered(),
-        .color = style.color,
-        .background = style.background,
+        .color = style.text_color,
+        .background = style.background_color,
         .urgent = if (style.urgent) true else null,
+        .border = if (style.border) |border| border.color else null,
+        .border_bottom = if (style.border) |border| border.bottom else null,
+        .border_left = if (style.border) |border| border.left else null,
+        .border_right = if (style.border) |border| border.right else null,
+        .border_top = if (style.border) |border| border.top else null,
+        .@"align" = if (style.@"align") |al| @tagName(al) else null,
     }, .{ .emit_null_optional_fields = false }, &w) catch return;
 
     self.len += w.buffered().len;
     self.blocks += 1;
 }
 
-pub fn event(self: *Bar, name: []const u8) ?Button {
-    for (self.events[0..self.n_events], 0..) |*e, i| {
-        if (!std.mem.eql(u8, e.name(), name)) continue;
-        const button = e.button;
-        std.mem.copyForwards(Event, self.events[i .. self.n_events - 1], self.events[i + 1 .. self.n_events]);
-        self.n_events -= 1;
-        return button;
-    }
-    return null;
+pub fn event(self: *Bar, name: []const u8) ?i3bar.Button {
+    return self.events.take(name);
 }
 
 pub fn end(self: *Bar) void {
@@ -153,14 +135,14 @@ pub fn end(self: *Bar) void {
         self.write(self.output_buffer[0 .. self.len + 3]);
     }
 
-    self.n_events = 0;
+    self.events.reset();
 
     const wait = @max(0, @min(self.wake - nowNs(self.io), 3600 * std.time.ns_per_s));
 
     if (self.stdin_open) {
         if (waitStdin(wait)) {
             self.readEvents();
-            if (self.n_events > 0) self.dirty = true;
+            if (!self.events.isEmpty()) self.dirty = true;
         }
     } else if (wait > 0) {
         self.io.sleep(.{ .nanoseconds = wait }, .awake) catch {};
@@ -193,7 +175,7 @@ fn readEvents(self: *Bar) void {
 
     var start: usize = 0;
     while (std.mem.indexOfScalarPos(u8, self.in_buf[0..self.in_len], start, '\n')) |nl| {
-        self.parseEvent(self.in_buf[start..nl]);
+        self.events.parse(self.in_buf[start..nl]);
         start = nl + 1;
     }
 
@@ -201,27 +183,6 @@ fn readEvents(self: *Bar) void {
     std.mem.copyForwards(u8, self.in_buf[0..rest], self.in_buf[start..self.in_len]);
     self.in_len = rest;
     if (self.in_len == self.in_buf.len) self.in_len = 0;
-}
-
-fn parseEvent(self: *Bar, raw: []const u8) void {
-    if (self.n_events == max_events) return;
-
-    const line = std.mem.trim(u8, raw, " \t\r,");
-    if (line.len == 0 or line[0] != '{') return;
-
-    var scratch: [512]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&scratch);
-    const parsed = std.json.parseFromSliceLeaky(RawEvent, fba.allocator(), line, .{
-        .ignore_unknown_fields = true,
-    }) catch return;
-
-    if (parsed.name.len == 0 or parsed.name.len > max_name) return;
-
-    const e = &self.events[self.n_events];
-    @memcpy(e.name_buf[0..parsed.name.len], parsed.name);
-    e.name_len = @intCast(parsed.name.len);
-    e.button = @fromBackingInt(@intCast(parsed.button));
-    self.n_events += 1;
 }
 
 fn schedulingStateFor(self: *Bar, key: usize) *SchedulingState {
@@ -233,6 +194,10 @@ fn schedulingStateFor(self: *Bar, key: usize) *SchedulingState {
     self.n_scheduling_states += 1;
     s.* = .{ .key = key };
     return s;
+}
+
+pub fn refresh(self: *Bar, module: anytype) void {
+    self.schedulingStateFor(@intFromPtr(module)).next_due = 0;
 }
 
 fn nowNs(io: Io) i96 {

@@ -12,3 +12,7 @@ pub inline fn trimmed(s: []const u8) []const u8 {
 pub inline fn openRo(io: std.Io, path: []const u8) !std.Io.File {
     return std.Io.Dir.openFile(.cwd(), io, path, .{ .mode = .read_only });
 }
+
+pub inline fn openRw(io: std.Io, path: []const u8) !std.Io.File {
+    return std.Io.Dir.openFile(.cwd(), io, path, .{ .mode = .read_write });
+}

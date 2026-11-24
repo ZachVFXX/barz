@@ -18,8 +18,9 @@ tz: std.tz.Tz,
 pub fn init(io: std.Io, gpa: std.mem.Allocator, interval: std.Io.Duration) !Self {
     const f = try utils.openRo(io, "/etc/localtime");
     defer f.close(io);
-    var buf: [16 * 1024]u8 = undefined;
-    var r = std.Io.Reader.fixed(try utils.readAt0(io, f, &buf));
+    const buf: []u8 = try gpa.alloc(u8, 16 * 1024);
+    defer gpa.free(buf);
+    var r = std.Io.Reader.fixed(try utils.readAt0(io, f, buf));
     return .{ .tz = try std.tz.Tz.parse(gpa, &r), .interval = interval };
 }
 

@@ -1,27 +1,31 @@
 const std = @import("std");
 const utils = @import("../utils.zig");
-const builtin = @import("builtin");
 const Self = @This();
 
 pub const Data = struct {
     percent: f32,
 };
+
+gpa: std.mem.Allocator,
 interval: std.Io.Duration,
 file: std.Io.File,
-buf: [256]u8 = undefined,
+buf: []u8,
 prev_idle: u64 = 0,
 prev_total: u64 = 0,
 
-pub fn init(io: std.Io, _: std.mem.Allocator, interval: std.Io.Duration) !Self {
-    return .{ .file = try utils.openRo(io, "/proc/stat"), .interval = interval };
+pub fn init(io: std.Io, gpa: std.mem.Allocator, interval: std.Io.Duration) !Self {
+    const file = try utils.openRo(io, "/proc/stat");
+    errdefer file.close(io);
+    return .{ .gpa = gpa, .file = file, .interval = interval, .buf = try gpa.alloc(u8, 256) };
 }
 
 pub fn deinit(self: *Self, io: std.Io) void {
     self.file.close(io);
+    self.gpa.free(self.buf);
 }
 
 pub fn read(self: *Self, io: std.Io) !Data {
-    const s = try utils.readAt0(io, self.file, &self.buf);
+    const s = try utils.readAt0(io, self.file, self.buf);
     var it = std.mem.tokenizeScalar(u8, s[0 .. std.mem.indexOfScalar(u8, s, '\n') orelse s.len], ' ');
     _ = it.next();
 

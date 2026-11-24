@@ -9,22 +9,25 @@ pub const Data = struct {
     used: units.Size = .{},
     percent: f64 = 0,
 };
-
+gpa: std.mem.Allocator,
 interval: std.Io.Duration,
 file: std.Io.File,
-buf: [1024]u8 = undefined,
+buf: []u8,
 
-pub fn init(io: std.Io, _: std.mem.Allocator, interval: std.Io.Duration) !Self {
-    return .{ .file = try utils.openRo(io, "/proc/meminfo"), .interval = interval };
+pub fn init(io: std.Io, gpa: std.mem.Allocator, interval: std.Io.Duration) !Self {
+    const file = try utils.openRo(io, "/proc/meminfo");
+    errdefer file.close(io);
+    return .{ .file = file, .interval = interval, .buf = try gpa.alloc(u8, 128), .gpa = gpa };
 }
 
 pub fn deinit(self: *Self, io: std.Io) void {
     self.file.close(io);
+    self.gpa.free(self.buf);
 }
 
 pub fn read(self: *Self, io: std.Io) !Data {
     var d: Data = .{};
-    var lines = std.mem.splitScalar(u8, try utils.readAt0(io, self.file, &self.buf), '\n');
+    var lines = std.mem.splitScalar(u8, try utils.readAt0(io, self.file, self.buf), '\n');
 
     var total_kib: u64 = 0;
     var available_kib: u64 = 0;
